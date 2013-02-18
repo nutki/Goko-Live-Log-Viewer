@@ -4,7 +4,7 @@
 // @description Goko Live Log Viewer
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     1
+// @version     2
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -50,10 +50,13 @@ Dom.LogManager.prototype.addLog = function (opt) {
 		newLogText += opt.text + '</br>';
 	    }
 	}
-	document.getElementById("myCanvas").style.marginLeft="0px";
-	var w = window.innerWidth - 960 - 10;
-	var t = window.innerHeight/2 - 320;
-	newLog.setAttribute("style", "position:absolute; overflow:auto; left:960px; width:"+w+"px; top:"+t+"px; height:640px; background-color: white; z-index: -1");
+	var goko_canvas = document.getElementById("myCanvas");
+	goko_canvas.style.marginLeft="0px";
+	var goko_w = goko_canvas.offsetWidth;
+	var goko_h = goko_canvas.offsetHeight;
+	var w = window.innerWidth - goko_w - 10;
+	var t = Math.floor((window.innerHeight - goko_h) / 2);
+	newLog.setAttribute("style", "position:absolute; overflow:auto; left:"+goko_w+"px; width:"+w+"px; top:"+t+"px; height:"+goko_h+"px; background-color: white; z-index: -1");
 	newLog.innerHTML = newLogText;
 	newLog.scrollTop = newLog.scrollHeight;
     }
