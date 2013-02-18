@@ -52,6 +52,7 @@ Dom.LogManager.prototype.addLog = function (opt) {
 	}
 	var goko_canvas = document.getElementById("myCanvas");
 	goko_canvas.style.marginLeft="0px";
+	document.getElementById("goko-game").setAttribute("style", 'margin-left:'+Math.floor(-window.innerWidth/2) + 'px !important');
 	var goko_w = goko_canvas.offsetWidth;
 	var goko_h = goko_canvas.offsetHeight;
 	var w = window.innerWidth - goko_w - 10;
