@@ -1,18 +1,27 @@
 // ==UserScript==
-// @name        Goko Live Log Viewer
+// @name        Dominion Online Live Log Viewer
 // @namespace   http://dom.retrobox.eu
-// @description Goko Live Log Viewer
+// @description Dominion Online Live Log Viewer
 // @include     http://play.goko.com/Dominion/gameClient.html
+// @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     2
+// @version     3
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
 var newLogMode = -1;
 var newLogPlayers = 0;
 var newLogNames = {};
+var newPhase = 'init';
+var newPrevPhase = 'init';
 newLog.setAttribute("class", "newlog");
 document.getElementById("goko-game").appendChild(newLog);
+Dom.DominionWindow.prototype._old_updateState = Dom.DominionWindow.prototype._updateState;
+Dom.DominionWindow.prototype._updateState = function (opt) {
+    if (opt.dominionPhase) newPhase = opt.dominionPhase;
+    this._old_updateState(opt);
+}
+
 Dom.LogManager.prototype.old_addLog = Dom.LogManager.prototype.addLog;
 Dom.LogManager.prototype.addLog = function (opt) {
     if (opt.logUrl) {
@@ -42,8 +51,15 @@ Dom.LogManager.prototype.addLog = function (opt) {
 		if (h) newLogNames[h[1]] = ++newLogPlayers;
 	    }
 	    var h;
-	    if (h = opt.text.match(/^(.*)( - .*)$/)) {
-		newLogText += '<span class="p'+newLogNames[h[1]]+'">'+h[1]+'</span>' + colorize(h[2]) + '</br>';
+	    if (h = opt.text.match(/^(.*) -( ([a-z]*).*)$/)) {
+		if (newLogMode > 0) {
+		    var initial = newPhase.substr(0,1).toUpperCase();
+		    if (h[3] != 'plays' && h[3] != 'buys' && newPrevPhase == newPhase)
+			initial = '&nbsp;';
+		    newPrevPhase = newPhase;
+		    newLogText += '<span class="phase '+newPhase+'Phase">'+initial+'</span> ';
+		}
+		newLogText += '<span class="player p'+newLogNames[h[1]]+'">'+h[1]+'</span>' + colorize(h[2]) + '</br>';
 	    } else if (newLogMode == 0 && (h = opt.text.match(/^(Supply cards:)(.*)/))) {
 		newLogText += h[1] + colorize(h[2]) + '</br>';
 	    } else {
@@ -114,6 +130,27 @@ border-color: orange; \
 background-color: lightblue;\
 border-color: blue; \
 }\
+*.actionPhase {\
+background-color: rgb(240,240,240);\
+}\
+*.buyPhase {\
+background-color: rgb(253,225,100);\
+}\
+*.cleanUpPhase {\
+background-color: rgb(254,143,78);\
+}\
+span.phase {\
+display: inline-block;\
+width: 15px;\
+text-align: center;\
+}\
+span.player {\
+display: inline-block;\
+min-width: 75px;\
+text-align: right;\
+padding-right: 3px;\
+padding-left: 3px;\
+}\
 action\
  { background-color:rgb(240,240,240) ; border-radius: 6px; }\
 treasure\
@@ -168,7 +205,13 @@ shelter-victory\
   background: -webkit-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
   background: -o-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
   background: -ms-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
-  background: linear-gradient(top, rgb(230,108,104), rgb(146,193,125));  border-radius: 6px;}"
+  background: linear-gradient(top, rgb(230,108,104), rgb(146,193,125));  border-radius: 6px;}\
+action-victory\
+{ background: -moz-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
+  background: -webkit-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
+  background: -o-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
+  background: -ms-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
+  background: linear-gradient(top, rgb(240,240,240), rgb(146,193,125)); border-radius: 6px;}"
 );
 var types = {
 'Border Village':'action',
@@ -407,4 +450,33 @@ var cards = Object.keys(types);
 var reg = new RegExp(cards.sort(function(a,b){return b.length-a.length}).join('|'),'g');
 function colorize(x) {
     return x.replace(reg,function (m) {var t = types[m]; return "<"+t+">"+m+"</"+t+">"});
+}
+
+var vpoint = {
+'Estate':function() {return 1},
+'Colony':function() {return 10},
+'Duchy':function() {return 3},
+'Duke':function(d) {return d.Dutchy ? d.Dutchy : 0;},
+'Fairgrounds':function(d) {var s=0;for(var c in d){s++};return Math.floor(s/5)},
+'Farmland':function() {return 2},
+'Feodum':function(d) {return d.Silver ? Math.floor(d.Silver/3) : 0;},
+'Gardens':function(d) {var s=0;for(var c in d){s+=d[c];};return Math.floor(s/10)},
+'Province':function() {return 6},
+'Silk Road':function(d) {var s=0;for(var c in d)if(types[c].matches(/victory/)){s+=d[c];};return Math.floor(s/4)},
+'Vineyard':function(d) {var s=0;for(var c in d)if(types[c].matches(/action/)){s+=d[c];};return Math.floor(s/3)},
+//'Overgrown Estate':function() {return 0},
+'Dame Josephine':function() {return 2},
+'Great Hall':function() {return 1},
+'Nobles':function() {return 2},
+'Island':function() {return 2},
+'Harem':function() {return 2},
+'Tunnel':function() {return 2},
+'Curse':function() {return -1},
+}
+function vp_in_deck(deck) {
+    var points = 0;
+    for (var card in deck) if(vpoint[card]) {
+	points += deck[card] * vpoint[card](deck);
+    }
+    return points;
 }
