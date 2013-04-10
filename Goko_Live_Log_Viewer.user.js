@@ -5,7 +5,7 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     3
+// @version     4
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -52,18 +52,22 @@ Dom.LogManager.prototype.addLog = function (opt) {
 	    }
 	    var h;
 	    if (h = opt.text.match(/^(.*) -( ([a-z]*).*)$/)) {
+		var indent = false;
 		if (newLogMode > 0) {
 		    var initial = newPhase.substr(0,1).toUpperCase();
-		    if (h[3] != 'plays' && h[3] != 'buys' && newPrevPhase == newPhase)
-			initial = '&nbsp;';
+		    indent = h[3] != 'plays' && h[3] != 'buys' && newPrevPhase == newPhase;
+		    if (newPrevPhase == newPhase) initial = '&nbsp;';
 		    newPrevPhase = newPhase;
 		    newLogText += '<span class="phase '+newPhase+'Phase">'+initial+'</span> ';
 		}
-		newLogText += '<span class="player p'+newLogNames[h[1]]+'">'+h[1]+'</span>' + colorize(h[2]) + '</br>';
+		newLogText += indent ? '<span class="indent">' : '<span>';
+		if (newLogNames[h[1]] != newLogMode)
+		    newLogText += '<span class="player p'+newLogNames[h[1]]+'">'+h[1]+'</span>';
+		newLogText += colorize(h[2]) + '</span><br>';
 	    } else if (newLogMode == 0 && (h = opt.text.match(/^(Supply cards:)(.*)/))) {
-		newLogText += h[1] + colorize(h[2]) + '</br>';
+		newLogText += h[1] + colorize(h[2]) + '<br>';
 	    } else {
-		newLogText += opt.text + '</br>';
+		newLogText += opt.text + '<br>';
 	    }
 	}
 	var goko_canvas = document.getElementById("myCanvas");
@@ -89,7 +93,8 @@ var ele = head.appendChild(window.document.createElement('style'));
 ele.innerHTML = style;
 return ele;
 }
-addStyle("\
+{
+var style = "\
 div.newlog {\
 font-size:12px;\
 font-family:Helvetica, Arial;\
@@ -145,74 +150,44 @@ width: 15px;\
 text-align: center;\
 }\
 span.player {\
-display: inline-block;\
-min-width: 75px;\
-text-align: right;\
-padding-right: 3px;\
-padding-left: 3px;\
+padding: 0px 3px;\
 }\
-action\
- { background-color:rgb(240,240,240) ; border-radius: 6px; }\
-treasure\
- { background-color:rgb(253,225,100) ; border-radius: 6px; }\
-reaction\
- { background-color:rgb(64,168,227) ; border-radius: 6px; }\
-duration\
- { background-color:rgb(254,143,78) ; border-radius: 6px; }\
-victory\
- { background-color:rgb(146,193,125) ; border-radius: 6px; }\
-curse\
- { background-color:rgb(215,138,219) ; border-radius: 6px; }\
-ruins\
- { background-color:rgb(150,104,51) ; border-radius: 6px; }\
-shelter\
- { background-color:rgb(230,108,104) ; border-radius: 6px; }\
+span.indent {\
+padding-left: 20px;\
+}\
 vp-chip\
- { background-color:rgb(0,0,0) ; border-radius: 6px;\
+ { background-color:rgb(0,0,0) ; border-radius: 4px; padding: 0px 3px;\
    color:rgb(255,255,255) ; }\
-treasure-victory\
-{ background: -moz-linear-gradient(top, rgb(253,225,100), rgb(146,193,125));\
-  background: -webkit-linear-gradient(top, rgb(253,225,100), rgb(146,193,125));\
-  background: -o-linear-gradient(top, rgb(253,225,100), rgb(146,193,125));\
-  background: -ms-linear-gradient(top, rgb(253,225,100), rgb(146,193,125));\
-  background: linear-gradient(top, rgb(253,225,100), rgb(146,193,125)); border-radius: 6px; }\
-treasure-reaction\
-{ background: -moz-linear-gradient(top, rgb(253,225,100), rgb(64,168,227));\
-  background: -webkit-linear-gradient(top, rgb(253,225,100), rgb(64,168,227));\
-  background: -o-linear-gradient(top, rgb(253,225,100), rgb(64,168,227));\
-  background: -ms-linear-gradient(top, rgb(253,225,100), rgb(64,168,227));\
-  background: linear-gradient(top, rgb(253,225,100), rgb(64,168,227)); border-radius: 6px; }\
-victory-reaction\
-{ background: -moz-linear-gradient(top, rgb(146,193,125), rgb(64,168,227));\
-  background: -webkit-linear-gradient(top, rgb(146,193,125), rgb(64,168,227));\
-  background: -o-linear-gradient(top, rgb(146,193,125), rgb(64,168,227));\
-  background: -ms-linear-gradient(top, rgb(146,193,125), rgb(64,168,227));\
-  background: linear-gradient(top, rgb(146,193,125), rgb(64,168,227)); border-radius: 6px; }\
-shelter-reaction\
-{ background: -moz-linear-gradient(top, rgb(230,108,104), rgb(64,168,227));\
-  background: -webkit-linear-gradient(top, rgb(230,108,104), rgb(64,168,227));\
-  background: -o-linear-gradient(top, rgb(230,108,104), rgb(64,168,227));\
-  background: -ms-linear-gradient(top, rgb(230,108,104), rgb(64,168,227));\
-  background: linear-gradient(top, rgb(230,108,104), rgb(64,168,227)); border-radius: 6px; }\
-action-shelter\
-{ background: -moz-linear-gradient(top, rgb(240,240,240), rgb(230,108,104));\
-  background: -webkit-linear-gradient(top, rgb(240,240,240), rgb(230,108,104));\
-  background: -o-linear-gradient(top, rgb(240,240,240), rgb(230,108,104));\
-  background: -ms-linear-gradient(top, rgb(240,240,240), rgb(230,108,104));\
-  background: linear-gradient(top, rgb(240,240,240), rgb(230,108,104));  border-radius: 6px;}\
-shelter-victory\
-{ background: -moz-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
-  background: -webkit-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
-  background: -o-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
-  background: -ms-linear-gradient(top, rgb(230,108,104), rgb(146,193,125));\
-  background: linear-gradient(top, rgb(230,108,104), rgb(146,193,125));  border-radius: 6px;}\
-action-victory\
-{ background: -moz-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
-  background: -webkit-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
-  background: -o-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
-  background: -ms-linear-gradient(top, rgb(240,240,240), rgb(146,193,125));\
-  background: linear-gradient(top, rgb(240,240,240), rgb(146,193,125)); border-radius: 6px;}"
-);
+";
+    var singletypes = {
+    action: 'rgb(240,240,240)',
+    treasure: 'rgb(253,225,100)',
+    reaction: 'rgb(64,168,227)',
+    duration: 'rgb(254,143,78)',
+    victory: 'rgb(146,193,125)',
+    curse: 'rgb(215,138,219)',
+    ruins: 'rgb(150,104,51)',
+    shelter: 'rgb(230,108,104)' };
+    for (var i in singletypes)
+	style += i + "{ background-color:"+singletypes[i]+"; border-radius: 4px; padding: 0px 3px;}";
+    var doubletypes = {
+	'treasure-victory': 'rgb(253,225,100), rgb(146,193,125)',
+	'treasure-reaction': 'rgb(253,225,100), rgb(64,168,227)',
+	'victory-reaction': 'rgb(146,193,125), rgb(64,168,227)',
+	'shelter-reaction': 'rgb(230,108,104), rgb(64,168,227)',
+	'action-shelter': 'rgb(240,240,240), rgb(230,108,104)',
+	'shelter-victory': 'rgb(230,108,104), rgb(146,193,125)',
+	'action-victory': 'rgb(240,240,240), rgb(146,193,125)',
+    }
+    for (var i in doubletypes)
+	style += i + "\
+{ background: -moz-linear-gradient(top, "+doubletypes[i]+");\
+  background: -webkit-linear-gradient(top, "+doubletypes[i]+");\
+  background: -o-linear-gradient(top, "+doubletypes[i]+");\
+  background: -ms-linear-gradient(top, "+doubletypes[i]+");\
+  background: linear-gradient(top, "+doubletypes[i]+"); border-radius: 6px; padding: 0px 3px;}";
+    addStyle(style);
+}
 var types = {
 'Border Village':'action',
 'Farming Village':'action',
