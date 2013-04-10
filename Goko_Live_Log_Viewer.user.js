@@ -457,7 +457,7 @@ var vpoint = {
 'Colony':function() {return 10},
 'Duchy':function() {return 3},
 'Duke':function(d) {return d.Dutchy ? d.Dutchy : 0;},
-'Fairgrounds':function(d) {var s=0;for(var c in d){s++};return Math.floor(s/5)},
+'Fairgrounds':function(d) {var s=0;for(var c in d){if(s[c]>0)s++};return Math.floor(s/5)},
 'Farmland':function() {return 2},
 'Feodum':function(d) {return d.Silver ? Math.floor(d.Silver/3) : 0;},
 'Gardens':function(d) {var s=0;for(var c in d){s+=d[c];};return Math.floor(s/10)},
@@ -480,3 +480,26 @@ function vp_in_deck(deck) {
     }
     return points;
 }
+
+Goko.Player.old_AvatarLoader = Goko.Player.AvatarLoader;
+Goko.Player.AvatarLoader = function(userdata,callback) {
+	function loadImage() {
+		var img = new Image();
+		img.onerror = function() { Goko.Player.old_AvatarLoader(userdata,callback); };
+		img.onload = function() { callback(img); };
+		img.src = "http://dom.retrobox.eu/avatars/"+userdata.player.id+".png";
+	}
+	if (userdata.which < 3) {
+	    loadImage();
+	} else {
+	    Goko.Player.old_AvatarLoader(userdata,callback);
+	}
+}
+
+FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id="fs-player-pad-avatar"',
+'<div style="display:none"><form id="uploadAvatarForm" method="post" action="http://dom.retrobox.eu/setavatar.php"><input type="text" id="uploadAvatarId" name="id" value="x"/></form></div>'+
+'<div id="fs-player-pad-avatar" onClick="'+
+'document.getElementById(\'uploadAvatarId\').setAttribute(\'value\',Goko.ObjectCache.getInstance().conn.connInfo.playerId);'+
+'document.getElementById(\'uploadAvatarForm\').submit();'+
+'"');
+//'<div id="fs-player-pad-avatar" onClick="window.open(\'http://dom.retrobox.eu/setavatar.php?id=\'+Goko.ObjectCache.getInstance().conn.connInfo.playerId);"');
