@@ -5,7 +5,7 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     4
+// @version     5
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -14,6 +14,10 @@ var newLogPlayers = 0;
 var newLogNames = {};
 var newPhase = 'init';
 var newPrevPhase = 'init';
+var playerDecks = [];
+var vpchips = [];
+var playervp = [];
+var possessed;
 newLog.setAttribute("class", "newlog");
 document.getElementById("goko-game").appendChild(newLog);
 Dom.DominionWindow.prototype._old_updateState = Dom.DominionWindow.prototype._updateState;
@@ -30,8 +34,9 @@ Dom.LogManager.prototype.addLog = function (opt) {
     if (opt.text) {
 	var h = opt.text.match(/^-+ (.*) -+$/);
 	if (h) {
-	    var j = h[1].match(/^(.*): turn \d+$/);
+	    var j = h[1].match(/^(.*): turn (\d+)( \[possessed\])?$/);
 	    if (j) {
+		possessed = j[3] != undefined; 
 		newLogMode = newLogNames[j[1]];
 		newLogText += '<h1 class="p'+newLogMode+'">'+h[1]+'</h1>';
 	    } else {
@@ -40,6 +45,9 @@ Dom.LogManager.prototype.addLog = function (opt) {
 		    newLogMode = 0;
 		    newLogPlayers = 0;
 		    newLogNames = {};
+		    playerDecks = [];
+		    vpchips = [];
+		    playervp = [];
 		} else {
 		    newLogMode = -1;
 		}
@@ -47,11 +55,16 @@ Dom.LogManager.prototype.addLog = function (opt) {
 	    }
 	} else {
 	    if (newLogMode == 0) {
-		var h = opt.text.match(/^(.*) - starting cards:/);
-		if (h) newLogNames[h[1]] = ++newLogPlayers;
+		var h = opt.text.match(/^(.*) - (starting cards: .*)/);
+		if (h) {
+		    newLogNames[h[1]] = ++newLogPlayers;
+		    playerDecks[newLogNames[h[1]]] = {};
+		    vpchips[newLogNames[h[1]]] = 0;
+		    updateDeck(newLogNames[h[1]], h[2]);
+		}
 	    }
 	    var h;
-	    if (h = opt.text.match(/^(.*) -( ([a-z]*).*)$/)) {
+	    if (h = opt.text.match(/^(.*) - (([a-z]*).*)$/)) {
 		var indent = false;
 		if (newLogMode > 0) {
 		    var initial = newPhase.substr(0,1).toUpperCase();
@@ -59,10 +72,11 @@ Dom.LogManager.prototype.addLog = function (opt) {
 		    if (newPrevPhase == newPhase) initial = '&nbsp;';
 		    newPrevPhase = newPhase;
 		    newLogText += '<span class="phase '+newPhase+'Phase">'+initial+'</span> ';
+		    updateDeck(newLogNames[h[1]], h[2]);
 		}
 		newLogText += indent ? '<span class="indent">' : '<span>';
 		if (newLogNames[h[1]] != newLogMode)
-		    newLogText += '<span class="player p'+newLogNames[h[1]]+'">'+h[1]+'</span>';
+		    newLogText += '<span class="player p'+newLogNames[h[1]]+'">'+h[1]+'</span> ';
 		newLogText += colorize(h[2]) + '</span><br>';
 	    } else if (newLogMode == 0 && (h = opt.text.match(/^(Supply cards:)(.*)/))) {
 		newLogText += h[1] + colorize(h[2]) + '<br>';
@@ -75,11 +89,12 @@ Dom.LogManager.prototype.addLog = function (opt) {
 	document.getElementById("goko-game").setAttribute("style", 'margin-left:'+Math.floor(-window.innerWidth/2) + 'px !important');
 	var goko_w = goko_canvas.offsetWidth;
 	var goko_h = goko_canvas.offsetHeight;
-	var w = window.innerWidth - goko_w - 10;
-	var t = Math.floor((window.innerHeight - goko_h) / 2);
-	newLog.setAttribute("style", "position:absolute; overflow:auto; left:"+goko_w+"px; width:"+w+"px; top:"+t+"px; height:"+goko_h+"px; background-color: white; z-index: -1");
-	newLog.innerHTML = newLogText;
-	newLog.scrollTop = newLog.scrollHeight;
+	var w = window.innerWidth - goko_w;
+	var t = goko_canvas.style.marginTop;
+	newLog.setAttribute("style", "position:absolute; overflow:auto; left:"+goko_w+"px; width:"+w+"px; margin-top:"+t+"; height:"+goko_h+"px; background-color: white; z-index: -1");
+	newLog.innerHTML = vp_div() + '<div id="newlogcontainer" style="overflow:auto;height:'+(goko_h-200)+'px;width:'+(w-10)+'px;padding:195px 5px 5px 5px">'+newLogText+"</div>";
+	var newLogContainer = document.getElementById("newlogcontainer");
+	newLogContainer.scrollTop = newLogContainer.scrollHeight;
     }
     this.old_addLog(opt);
 };
@@ -98,18 +113,12 @@ var style = "\
 div.newlog {\
 font-size:12px;\
 font-family:Helvetica, Arial;\
-padding: 0px 5px;\
 }\
 table {\
-margin: 5px 10px;\
-padding: 0px 20px;\
+margin: 1px 1px;\
 }\
 td {\
-padding: 0px 1px;\
-}\
-td.c1 {\
-text-align:right;\
-width:200px;\
+padding: 1px 4px;\
 }\
 h1 {\
 margin: 0px 0px;\
@@ -162,11 +171,11 @@ vp-chip\
     var singletypes = {
     action: 'rgb(240,240,240)',
     treasure: 'rgb(253,225,100)',
-    reaction: 'rgb(64,168,227)',
-    duration: 'rgb(254,143,78)',
+    'action-reaction': 'rgb(64,168,227)',
+    'action-duration': 'rgb(254,143,78)',
     victory: 'rgb(146,193,125)',
     curse: 'rgb(215,138,219)',
-    ruins: 'rgb(150,104,51)',
+    'action-ruins': 'rgb(150,104,51)',
     shelter: 'rgb(230,108,104)' };
     for (var i in singletypes)
 	style += i + "{ background-color:"+singletypes[i]+"; border-radius: 4px; padding: 0px 3px;}";
@@ -195,12 +204,12 @@ var types = {
 'Native Village':'action',
 'Walled Village':'action',
 'Worker\'s Village':'action',
-'Ruined Village':'ruins',
-'Fishing Village':'duration',
+'Ruined Village':'action-ruins',
+'Fishing Village':'action-duration',
 'Village':'action',
-'Ruined Library':'ruins',
+'Ruined Library':'action-ruins',
 'Library':'action',
-'Abandoned Mine':'ruins',
+'Abandoned Mine':'action-ruins',
 'Mine':'action',
 'Bag of Gold':'action',
 'Fool\'s Gold':'treasure-reaction',
@@ -211,10 +220,10 @@ var types = {
 'Count':'action',
 'Coppersmith':'action',
 'Copper':'treasure',
-'Ruined Market':'ruins',
+'Ruined Market':'action-ruins',
 'Grand Market':'action',
 'Black Market':'action',
-'Market Square':'reaction',
+'Market Square':'action-reaction',
 'Market':'action',
 'Adventurer':'action',
 'Alchemist':'action',
@@ -365,12 +374,12 @@ var types = {
 'Young Witch':'action',
 'Woodcutter':'action',
 'Workshop':'action',
-'Beggar':'reaction',
-'Watchtower':'reaction',
-'Horse Traders':'reaction',
-'Moat':'reaction',
-'Secret Chamber':'reaction',
-'Trader':'reaction',
+'Beggar':'action-reaction',
+'Watchtower':'action-reaction',
+'Horse Traders':'action-reaction',
+'Moat':'action-reaction',
+'Secret Chamber':'action-reaction',
+'Trader':'action-reaction',
 'Bank':'treasure',
 'Cache':'treasure',
 'Contraband':'treasure',
@@ -400,15 +409,14 @@ var types = {
 'Province':'victory',
 'Silk Road':'victory',
 'Vineyard':'victory',
-'Caravan':'duration',
-'Haven':'duration',
-'Lighthouse':'duration',
-'Merchant Ship':'duration',
-'Outpost':'duration',
-'Tactician':'duration',
-'Wharf':'duration',
-'Survivors':'ruins',
-'Ruins':'ruins',
+'Caravan':'action-duration',
+'Haven':'action-duration',
+'Lighthouse':'action-duration',
+'Merchant Ship':'action-duration',
+'Outpost':'action-duration',
+'Tactician':'action-duration',
+'Wharf':'action-duration',
+'Survivors':'action-ruins',
 'Dame Josephine':'action-victory',
 'Great Hall':'action-victory',
 'Nobles':'action-victory',
@@ -421,24 +429,27 @@ var types = {
 'Curse':'curse',
 }
 
+var fixnames = { 'JackOfAllTrades':'Jack of All Trades' };
+function fixname(n) { return fixnames[n] || n; }
+
 var cards = Object.keys(types);
 var reg = new RegExp(cards.sort(function(a,b){return b.length-a.length}).join('|'),'g');
 function colorize(x) {
-    return x.replace(reg,function (m) {var t = types[m]; return "<"+t+">"+m+"</"+t+">"});
+    return x.replace(reg,function (m) {var t = types[m]; return "<"+t+">"+fixname(m)+"</"+t+">"});
 }
 
 var vpoint = {
 'Estate':function() {return 1},
 'Colony':function() {return 10},
 'Duchy':function() {return 3},
-'Duke':function(d) {return d.Dutchy ? d.Dutchy : 0;},
-'Fairgrounds':function(d) {var s=0;for(var c in d){if(s[c]>0)s++};return Math.floor(s/5)},
+'Duke':function(d) {return d.Duchy || 0},
+'Fairgrounds':function(d) {var s=0;for(var c in d)s++;return 2*Math.floor(s/5)},
 'Farmland':function() {return 2},
-'Feodum':function(d) {return d.Silver ? Math.floor(d.Silver/3) : 0;},
-'Gardens':function(d) {var s=0;for(var c in d){s+=d[c];};return Math.floor(s/10)},
+'Feodum':function(d) {return Math.floor((d.Silver || 0)/3)},
+'Gardens':function(d) {var s=0;for(var c in d)s+=d[c];return Math.floor(s/10)},
 'Province':function() {return 6},
-'Silk Road':function(d) {var s=0;for(var c in d)if(types[c].matches(/victory/)){s+=d[c];};return Math.floor(s/4)},
-'Vineyard':function(d) {var s=0;for(var c in d)if(types[c].matches(/action/)){s+=d[c];};return Math.floor(s/3)},
+'Silk Road':function(d) {var s=0;for(var c in d)if(types[c].match(/victory/))s+=d[c];return Math.floor(s/4)},
+'Vineyard':function(d) {var s=0;for(var c in d)if(types[c].match(/\baction/))s+=d[c];return Math.floor(s/3)},
 //'Overgrown Estate':function() {return 0},
 'Dame Josephine':function() {return 2},
 'Great Hall':function() {return 1},
@@ -454,6 +465,94 @@ function vp_in_deck(deck) {
 	points += deck[card] * vpoint[card](deck);
     }
     return points;
+}
+function updateCards(player, cards, v) {
+    for (var i = 0; i < cards.length; i++) {
+	playerDecks[player][cards[i]] = playerDecks[player][cards[i]] ?
+	    playerDecks[player][cards[i]] + v : v;
+	if (playerDecks[player][cards[i]] <= 0)
+	    delete playerDecks[player][cards[i]];
+    }
+    playervp[player] = vpchips[player] + vp_in_deck(playerDecks[player]);
+}
+function updateDeck(player, action) {
+    var h;
+    if (h = action.match(/^returns (.*) to the Supply$/)) {
+	updateCards(player, [h[1]], -1);
+    } else if (h = action.match(/^gains (.*)/)) {
+	updateCards(player, [h[1]], 1);
+    } else if (h = action.match(/^trashes (.*)/)) {
+	if (possessed && player == newLogMode) return;
+	updateCards(player, h[1].split(', ').filter(function(c){return c != "Fortress"}), -1);
+    } else if (h = action.match(/^starting cards: (.*)/)) {
+	updateCards(player, h[1].split(', '), 1);
+    } else if (h = action.match(/^passes (.*)/)) {
+	updateCards(player, [h[1]], -1);
+	updateCards(player == newLogPlayers ? 1 : player + 1, [h[1]], 1);
+    } else if (h = action.match(/^receives ([0-9]*) victory point chips$/)) {
+	vpchips[player]+=+h[1];
+	updateCards(player, []);
+    } else if (h = action.match(/^plays Bishop$/)) {
+	vpchips[player]++;
+	updateCards(player, []);
+    } else if (h = action.match(/^plays (Spoils|Madman)$/)) {
+	updateCards(player, [h[1]], -1);
+    }
+}
+var vpOn = false;
+var vpOff = false;
+function vp_div() {
+    if (!vpOn) return '';
+    var ret = '<div style="position:absolute;padding:2px;background-color:gray"><table>';
+    var p = Object.keys(newLogNames);
+    p.sort(function(a,b){
+	var pa = newLogNames[a];
+	var pb = newLogNames[b];
+	if (playervp[pa] != playervp[pb]) return playervp[pb] - playervp[pa];
+	return pb - pa;
+    });
+    for (var i = 0; i < p.length; i++) {
+	var pn = newLogNames[p[i]];
+	ret += '<tr class="p'+pn+'"><td>'+p[i] + '</td><td>'+ playervp[pn] + '</td></tr>';
+    }
+    ret += '</table></div>';
+    return ret;
+}
+var old_onIncomingMessage = DominionClient.prototype.onIncomingMessage;
+DominionClient.prototype.onIncomingMessage = function(messageName, messageData, message) {
+    try {
+//    if (messageName != 'messageGroup' && messageName != 'gamePingMessage')
+//	console.log(messageName + JSON.stringify(messageData));
+    if (messageName == 'RoomChat') {
+	if (messageData.text.toUpperCase() == '#VPOFF') {
+	    vpOff = true;
+	    vpOn = false;
+	    this.clientConnection.send('sendChat',{text:'Victory Point tracker disallowed'});
+	} else if (messageData.text.toUpperCase() == '#VPON') {
+	    if (vpOff) {
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker previously disallowed'});
+	    } else {
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker enabled (type #vpoff to disallow)'});
+		vpOn = true;
+	    }
+	}
+    } else if (messageName == 'addLog' && messageData.text == '------------ Game Setup ------------') {
+	vpOn = false;
+	vpOff = false;
+	var tablename = JSON.parse(this.table.get("settings")).name;
+	if (tablename) {
+	    tablename = tablename.toUpperCase();
+	    if (tablename.indexOf("#VPON") != -1) {
+		this.clientConnection.send('sendChat',{text:'#vpon'})
+	    } else if (tablename.indexOf("#VPOFF") != -1) {
+		this.clientConnection.send('sendChat',{text:'#vpoff'})
+	    }
+	}
+    }
+    } catch (e) {
+	console.log('exception :' + e);
+    }
+    old_onIncomingMessage.call(this, messageName, messageData, message);
 }
 
 Goko.Player.old_AvatarLoader = Goko.Player.AvatarLoader;
@@ -477,4 +576,4 @@ FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id
 'document.getElementById(\'uploadAvatarId\').setAttribute(\'value\',Goko.ObjectCache.getInstance().conn.connInfo.playerId);'+
 'document.getElementById(\'uploadAvatarForm\').submit();'+
 '"');
-//'<div id="fs-player-pad-avatar" onClick="window.open(\'http://dom.retrobox.eu/setavatar.php?id=\'+Goko.ObjectCache.getInstance().conn.connInfo.playerId);"');
+
