@@ -5,7 +5,7 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     5
+// @version     6
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -501,6 +501,7 @@ function updateDeck(player, action) {
 }
 var vpOn = false;
 var vpOff = false;
+var lasttablename;
 function vp_div() {
     if (!vpOn) return '';
     var ret = '<div style="position:absolute;padding:2px;background-color:gray"><table>';
@@ -541,6 +542,7 @@ DominionClient.prototype.onIncomingMessage = function(messageName, messageData, 
 	vpOff = false;
 	var tablename = JSON.parse(this.table.get("settings")).name;
 	if (tablename) {
+	    lasttablename = tablename;
 	    tablename = tablename.toUpperCase();
 	    if (tablename.indexOf("#VPON") != -1) {
 		this.clientConnection.send('sendChat',{text:'#vpon'})
@@ -577,3 +579,10 @@ FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id
 'document.getElementById(\'uploadAvatarForm\').submit();'+
 '"');
 
+FS.EditTableView.prototype.old_modifyDOM = FS.EditTableView.prototype.modifyDOM;
+FS.EditTableView.prototype.modifyDOM = function () {
+    var create = !_.isNumber(this.tableIndex);
+    this.old_modifyDOM();
+    if (create && lasttablename)
+	this.$tableName.val(lasttablename);
+}
