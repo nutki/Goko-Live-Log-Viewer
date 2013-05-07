@@ -5,7 +5,7 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     7
+// @version     8
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -486,9 +486,11 @@ function updateDeck(player, action) {
 	updateCards(player, h[1].split(', ').filter(function(c){return c != "Fortress"}), -1);
     } else if (h = action.match(/^starting cards: (.*)/)) {
 	updateCards(player, h[1].split(', '), 1);
+/* live log does not have passed card names
     } else if (h = action.match(/^passes (.*)/)) {
 	updateCards(player, [h[1]], -1);
 	updateCards(player == newLogPlayers ? 1 : player + 1, [h[1]], 1);
+*/
     } else if (h = action.match(/^receives ([0-9]*) victory point chips$/)) {
 	vpchips[player]+=+h[1];
 	updateCards(player, []);
