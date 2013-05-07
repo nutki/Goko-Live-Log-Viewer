@@ -5,7 +5,7 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @grant       none
-// @version     6
+// @version     7
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -557,13 +557,31 @@ DominionClient.prototype.onIncomingMessage = function(messageName, messageData, 
     old_onIncomingMessage.call(this, messageName, messageData, message);
 }
 
+var myCanvas = document.createElement("canvas");
+var myContext = myCanvas.getContext("2d");
 Goko.Player.old_AvatarLoader = Goko.Player.AvatarLoader;
 Goko.Player.AvatarLoader = function(userdata,callback) {
 	function loadImage() {
-		var img = new Image();
-		img.onerror = function() { Goko.Player.old_AvatarLoader(userdata,callback); };
-		img.onload = function() { callback(img); };
-		img.src = "http://dom.retrobox.eu/avatars/"+userdata.player.id+".png";
+	    var img = new Image();
+	    var img2 = new Image();
+	    img.onerror = img2.onerror = function() {
+		Goko.Player.old_AvatarLoader(userdata,callback);
+	    };
+	    img.onload = function() {
+		try {
+		    var size = [50,100,256][userdata.which];
+		    myCanvas.width = size;
+		    myCanvas.height = size;
+		    myContext.drawImage(img, 0, 0, img.width, img.height, 0, 0, size, size);
+		    img2.onload = function() {callback(img2)};
+		    img2.src = myCanvas.toDataURL("image/png");
+		} catch (e) {
+		    alert(e.toString());
+		    Goko.Player.old_AvatarLoader(userdata,callback);
+		}
+	    };
+	    img.crossOrigin = "Anonymous";
+	    img.src = "http://dom.retrobox.eu/avatars/"+userdata.player.id+".png";
 	}
 	if (userdata.which < 3) {
 	    loadImage();
@@ -571,6 +589,7 @@ Goko.Player.AvatarLoader = function(userdata,callback) {
 	    Goko.Player.old_AvatarLoader(userdata,callback);
 	}
 }
+Goko.Player.preloader=function(ids,which) {}
 
 FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id="fs-player-pad-avatar"',
 '<div style="display:none"><form id="uploadAvatarForm" method="post" action="http://dom.retrobox.eu/setavatar.php"><input type="text" id="uploadAvatarId" name="id" value="x"/></form></div>'+
