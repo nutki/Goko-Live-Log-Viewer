@@ -6,7 +6,7 @@
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
 // @grant       none
-// @version     9
+// @version     10
 // ==/UserScript==
 var newLog = document.createElement('div');
 var newLogText = '';
@@ -19,6 +19,7 @@ var playerDecks = [];
 var vpchips = [];
 var playervp = [];
 var possessed;
+var newLogHide = true;
 newLog.setAttribute("class", "newlog");
 document.getElementById("goko-game").appendChild(newLog);
 Dom.DominionWindow.prototype._old_updateState = Dom.DominionWindow.prototype._updateState;
@@ -85,24 +86,28 @@ Dom.LogManager.prototype.addLog = function (opt) {
 		newLogText += opt.text + '<br>';
 	    }
 	}
+	newLogHide = false;
+	newLogRefresh();
+	var newLogContainer = document.getElementById("newlogcontainer");
+	newLogContainer.scrollTop = newLogContainer.scrollHeight;
+    }
+    this.old_addLog(opt);
+};
+function newLogRefresh() {
+	var goko_game = document.getElementById("goko-game");
 	var goko_canvas = document.getElementById("myCanvas");
-	goko_canvas.style.marginLeft="0px";
-	document.getElementById("goko-game").setAttribute("style", 'margin-left:'+Math.floor(-window.innerWidth/2) + 'px !important');
+	if (newLogHide || goko_game.style.display == 'none') return;
+	goko_game.setAttribute("style", 'margin-left:'+Math.floor(-window.innerWidth/2) + 'px !important');
 	var goko_w = goko_canvas.offsetWidth;
 	var goko_h = goko_canvas.offsetHeight;
 	var w = window.innerWidth - goko_w;
 	var t = goko_canvas.style.marginTop;
 	newLog.setAttribute("style", "position:absolute; overflow:auto; left:"+goko_w+"px; width:"+w+"px; margin-top:"+t+"; height:"+goko_h+"px; background-color: white; z-index: -1");
 	newLog.innerHTML = vp_div() + '<div id="newlogcontainer" style="overflow:auto;height:'+(goko_h-200)+'px;width:'+(w-10)+'px;padding:195px 5px 5px 5px">'+newLogText+"</div>";
-	var newLogContainer = document.getElementById("newlogcontainer");
-	newLogContainer.scrollTop = newLogContainer.scrollHeight;
-    }
-    this.old_addLog(opt);
-};
-//function newLogAlign() {
-//    setTimeout('newLogAlign()', 1000/2);
-//}
-//newLogAlign();
+}
+window.addEventListener('resize', function() {
+	setTimeout(newLogRefresh,100);
+}, false);
 function addStyle(style) {
 var head = document.getElementsByTagName('head')[0];
 var ele = head.appendChild(window.document.createElement('style'));
@@ -522,7 +527,6 @@ function decodeCard(name) {
 }
 var vpOn = false;
 var vpOff = false;
-var lasttablename;
 function vp_div() {
     if (!vpOn) return '';
     var ret = '<div style="position:absolute;padding:2px;background-color:gray"><table>';
@@ -540,6 +544,21 @@ function vp_div() {
     ret += '</table></div>';
     return ret;
 }
+Dom.DominionWindow.prototype._old_moveCards = Dom.DominionWindow.prototype._moveCards;
+Dom.DominionWindow.prototype._moveCards = function(options, callback) {
+    var m = options.moves;
+    try {
+    for (var i = 0; i < m.length; i++) {
+	if (m[i].source.area.name == 'reveal' && m[i].destination.area.name == 'hand' &&
+	    m[i].source.area.playerIndex != m[i].destination.area.playerIndex) {
+	    updateDeckMasq(m[i].source.area.playerIndex+1, m[i].destination.area.playerIndex+1,
+			decodeCard(m[i].sourceCard));
+	}
+    }
+    } catch (e) { console.log('exception: ' + e); }
+    this._old_moveCards(options, callback);
+}
+
 var old_onIncomingMessage = DominionClient.prototype.onIncomingMessage;
 DominionClient.prototype.onIncomingMessage = function(messageName, messageData, message) {
     try {
@@ -563,21 +582,11 @@ DominionClient.prototype.onIncomingMessage = function(messageName, messageData, 
 	vpOff = false;
 	var tablename = JSON.parse(this.table.get("settings")).name;
 	if (tablename) {
-	    lasttablename = tablename;
 	    tablename = tablename.toUpperCase();
 	    if (tablename.indexOf("#VPON") != -1) {
 		this.clientConnection.send('sendChat',{text:'#vpon'})
 	    } else if (tablename.indexOf("#VPOFF") != -1) {
 		this.clientConnection.send('sendChat',{text:'#vpoff'})
-	    }
-	}
-    } else if (messageName == 'moveCards' && messageData.moves) {
-	var m = messageData.moves;
-	for (var i = 0; i < m.length; i++) {
-	    if (m[i].source.area.name == 'reveal' && m[i].destination.area.name == 'hand' &&
-		m[i].source.area.playerIndex != m[i].destination.area.playerIndex) {
-		updateDeckMasq(m[i].source.area.playerIndex+1, m[i].destination.area.playerIndex+1,
-			       decodeCard(m[i].sourceCard));
 	    }
 	}
     }
@@ -631,6 +640,7 @@ FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id
 FS.EditTableView.prototype.old_modifyDOM = FS.EditTableView.prototype.modifyDOM;
 FS.EditTableView.prototype.modifyDOM = function () {
     var create = !_.isNumber(this.tableIndex);
+    var lasttablename = this.$tableName.val();
     this.old_modifyDOM();
     if (create && lasttablename)
 	this.$tableName.val(lasttablename);
@@ -763,30 +773,56 @@ function myBuildDeck(avail, s) {
     }
     return deck;
 }
+var kingdomsel = function(val) {
+    this.sel = document.createElement('div');
+    this.sel.setAttribute("style", "position:absolute;display:none;left:0px;top:0px;height:100%;width:100%;background:rgba(0,0,0,0.5);z-index:6000;");
+    this.sel.setAttribute("class", "newlog");
+    this.sel.innerHTML = '<div style="text-align:center;position:absolute;top:50%;left:50%;height:100px;margin-top:-50px;width:80%;margin-left:-40%;background:white;"><div style="margin-top:20px">Select a kingdom (see <a target="_blank" href="http://dom.retrobox.eu/kingdomgenerator.html">instructions</a>):<br><form id="selform"><input id="selval" style="width:95%"><br><input type="submit" value="OK"></form></div></div>';
+    document.getElementById('viewport').appendChild(this.sel);
+    this.selform = document.getElementById('selform');
+    this.selval = document.getElementById('selval');
+    this.selval.value = 'All';
+}
+kingdomsel.prototype = {
+    prompt: function(callback) {
+	var self = this;
+	this.sel.style.display = 'block';
+	this.selval.focus();
+	this.selform.onsubmit = function () {
+	    callback(this.selval.value);
+	    self.sel.style.display = 'none';
+	    self.selform.onsubmit = null;
+	    return false;
+	};
+    }
+}
 document.addEventListener ('DOMContentLoaded', function() {
-    var deckInput = "All";
-    var useEternalGenerateMethod = false;
+    var myCachedCards;
+    var sel = new kingdomsel('All');
     if(FS.Dominion.DeckBuilder.Persistent.prototype._old_proRandomMethod) return;
     FS.Dominion.DeckBuilder.Persistent.prototype._old_proRandomMethod =
     FS.Dominion.DeckBuilder.Persistent.prototype._proRandomMethod;
     FS.Dominion.DeckBuilder.Persistent.prototype._proRandomMethod = function(cachedCards, exceptCards, numberCards) {
+	myCachedCards = cachedCards;
 	var ret = this._old_proRandomMethod(cachedCards, exceptCards, numberCards);
-	if (useEternalGenerateMethod) try {
-	    var p = prompt("Select card set:", deckInput);
-	    if (!p) return ret;
-	    deckInput = p;
-	    var all = {};
-	    cachedCards.each(function (c) {all[c.get('nameId').toLowerCase()] = c.toJSON()});
-	    var myret = myBuildDeck(all, set_parser.parse(deckInput));
-	    if (myret) ret = myret;
-	    else throw new Error('Cannot generate specified kingdom from the cards availiable');
-	} catch (e) {alert(e)}
 	return ret;
     }
     FS.Dominion.DeckBuilder.Persistent.prototype._old_getRandomCards =
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards;
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards = function (opts, callback) {
-	useEternalGenerateMethod = opts.useEternalGenerateMethod;
-	this._old_getRandomCards(opts,callback);
+	this._old_getRandomCards(opts,function (x) {
+	    if (opts.useEternalGenerateMethod) {
+		sel.prompt(function (val) {
+		    try {
+			var all = {};
+			myCachedCards.each(function (c) {all[c.get('nameId').toLowerCase()] = c.toJSON()});
+			var myret = myBuildDeck(all, set_parser.parse(val));
+			if (myret) x = myret;
+			else throw new Error('Cannot generate specified kingdom from the cards availiable');
+		    } catch(e) {alert(e)};
+		    callback(x);
+		});
+	    } else callback(x);
+	});
     }
 });
