@@ -5,9 +5,11 @@
 // @include     http://play.goko.com/Dominion/gameClient.html
 // @include     https://play.goko.com/Dominion/gameClient.html
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
+// @run-at      document-end
 // @grant       none
-// @version     10
+// @version     11
 // ==/UserScript==
+var foo = function () {
 var newLog = document.createElement('div');
 var newLogText = '';
 var newLogMode = -1;
@@ -518,6 +520,7 @@ function updateDeckMasq(src_player, dst_player, card) {
 function canonizeName(n) {
     return n.toLowerCase().replace(/\W+/g,'');
 }
+
 function decodeCard(name) {
     var n = name.toLowerCase().replace(/\.\d+$/,'');
     for (var i in types)
@@ -652,6 +655,7 @@ FS.DominionEditTableView.prototype._renderRandomDeck = function () {
     if (this.ratingType == 'pro') return;
     this._old_renderRandomDeck();
 }
+
 var setsComp = {
 cellar:"B2",chapel:"B2",moat:"B2",
 chancellor:"B3",village:"B3",woodcutter:"B3",workshop:"B3",
@@ -721,6 +725,7 @@ var setNames = {
     'X':'promos',
 };
 var sets = {};
+
 function buildSets() {
     sets.all = {};
     for(var c in setNames) sets[setNames[c]] = {};
@@ -796,7 +801,7 @@ kingdomsel.prototype = {
 	};
     }
 }
-document.addEventListener ('DOMContentLoaded', function() {
+//document.addEventListener ('DOMContentLoaded', function() {
     var myCachedCards;
     var sel = new kingdomsel('All');
     if(FS.Dominion.DeckBuilder.Persistent.prototype._old_proRandomMethod) return;
@@ -825,4 +830,44 @@ document.addEventListener ('DOMContentLoaded', function() {
 	    } else callback(x);
 	});
     }
-});
+window.canonizeName = canonizeName;
+window.sets = sets;
+//});
+FS.ZoneClassicHelper.prototype.old_onPlayerJoinTable =
+FS.ZoneClassicHelper.prototype.onPlayerJoinTable;
+FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
+    this.old_onPlayerJoinTable(t,tp);
+    if (this.isLocalOwner(t)) {
+	var p = tp.get('player');
+	var settings = JSON.parse(t.get("settings"));
+	var pro = settings.ratingType == 'pro';
+	var m = settings.name.toLowerCase().match(/\b(\d+)(\d{3}|k)\+/);
+	var mr = null;
+	if (m) mr = parseInt(m[1],10) * 1000 + (m[2] == 'k' ? 0 : parseInt(m[2],10));
+	var ratingHelper = this.meetingRoom.getHelper('RatingHelper');
+	var self = this;
+	if (mr) ratingHelper.getRating({
+	    playerId: p.get("playerId"),
+	    $elPro: $(document.createElement('div')),
+	    $elQuit: $(document.createElement('div'))
+	}, function (resp) {
+	    if (!resp.data) return;
+	    var r = pro ? resp.data.ratingPro : resp.data.rank;
+	    if (r != undefined && r < mr) self.meetingRoom.conn.bootTable({
+		table: t.get('number'),
+		playerAddress: p.get('playerAddress')
+	    });
+	});
+    }
+}
+};
+document.addEventListener ('DOMContentLoaded', foo);
+/*
+var runInPageContext = function(fn) {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.textContent = '('+ fn +')();';
+  document.body.appendChild(script);
+}      
+runInPageContext(foo);
+*/
