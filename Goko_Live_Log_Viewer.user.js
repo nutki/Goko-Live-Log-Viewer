@@ -7,9 +7,13 @@
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
 // @run-at      document-end
 // @grant       none
-// @version     11
+// @version     12
 // ==/UserScript==
 var foo = function () {
+if (Dom.LogManager.prototype.old_addLog) {
+    alert('More than one Dominion User Extension detected.\nPlease uninstall or disable one of them.');
+    return;
+}
 var newLog = document.createElement('div');
 var newLogText = '';
 var newLogMode = -1;
@@ -118,6 +122,19 @@ return ele;
 }
 {
 var style = "\
+.fs-launch-game-wrapper .header-bar .fs-rs-logout-row .fs-lg-settings-btn{\
+height: 30px;\
+line-height: 30px;\
+text-decoration: none;\
+text-align:center;\
+position:relative;\
+z-index: 1;\
+font-size: 13px;\
+font-weight: bold;\
+color: #5baacb;\
+cursor: pointer;\
+font-family: \"TrajanPro\", san-serif;\
+}\
 div.newlog {\
 font-size:12px;\
 font-family:Helvetica, Arial;\
@@ -599,6 +616,9 @@ DominionClient.prototype.onIncomingMessage = function(messageName, messageData, 
     old_onIncomingMessage.call(this, messageName, messageData, message);
 }
 
+//
+// Custom avatar module
+//
 var myCanvas = document.createElement("canvas");
 var myContext = myCanvas.getContext("2d");
 Goko.Player.old_AvatarLoader = Goko.Player.AvatarLoader;
@@ -640,16 +660,48 @@ FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('<div id
 'document.getElementById(\'uploadAvatarForm\').submit();'+
 '"');
 
+//
+// Saving table name module
+//
 FS.EditTableView.prototype.old_modifyDOM = FS.EditTableView.prototype.modifyDOM;
 FS.EditTableView.prototype.modifyDOM = function () {
     var create = !_.isNumber(this.tableIndex);
-    var lasttablename = this.$tableName.val();
-    this.old_modifyDOM();
+    var lasttablename = this.$tableName.val() || options.lasttablename;
+    options.lasttablename = lasttablename;
+    options_save();
+    FS.EditTableView.prototype.old_modifyDOM.call(this);
     if (create && lasttablename)
 	this.$tableName.val(lasttablename);
 }
 
+//
+// Saving other table settings between sessions
+//
+var firstCreateTable = true;
+FS.DominionEditTableView.prototype.old_modifyDOM = FS.DominionEditTableView.prototype.modifyDOM;
+FS.DominionEditTableView.prototype.modifyDOM = function () {
+    var create = !_.isNumber(this.tableIndex);
+    if (create && firstCreateTable) {
+	if (options.cacheSettings) this.cacheSettings = options.cacheSettings;
+	firstCreateTable = false;
+    }
+    FS.DominionEditTableView.prototype.old_modifyDOM.call(this);
+}
 
+FS.DominionEditTableView.prototype.old_retriveDOM = FS.DominionEditTableView.prototype.retriveDOM;
+FS.DominionEditTableView.prototype.retriveDOM = function () {
+    var ret = FS.DominionEditTableView.prototype.old_retriveDOM.call(this);
+    if (ret) {
+	options.cacheSettings = this.cacheSettings;
+	options_save();
+    }
+    return ret;
+}
+
+
+//
+// Kingdom generator module
+//
 FS.DominionEditTableView.prototype._old_renderRandomDeck = FS.DominionEditTableView.prototype._renderRandomDeck;
 FS.DominionEditTableView.prototype._renderRandomDeck = function () {
     if (this.ratingType == 'pro') return;
@@ -753,7 +805,6 @@ buildSets();
 function myBuildCard(avail, except, set) {
     var sum = 0;
     for (var c in set) if (avail[c] && !except[c]) sum += set[c];
-    console.log(sum);
     if (!sum) return null;
     var rnd = Math.random() * sum;
     for (var c in set) if (avail[c] && !except[c]) {
@@ -816,7 +867,7 @@ kingdomsel.prototype = {
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards;
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards = function (opts, callback) {
 	this._old_getRandomCards(opts,function (x) {
-	    if (opts.useEternalGenerateMethod) {
+	    if (options.generator && opts.useEternalGenerateMethod) {
 		sel.prompt(function (val) {
 		    try {
 			var all = {};
@@ -833,11 +884,21 @@ kingdomsel.prototype = {
 window.canonizeName = canonizeName;
 window.sets = sets;
 //});
+
+//
+// Auto kick module
+//
+// Goko dependencies:
+//   - getRating API specifics ($elPro and $elQuit trigger getting the pro ranking)
+//   - onPlayerJoinTable API
+//   - lot of other APIs (bootTable, table settings, isLocalOwner)
+// Internal dependencies: enabled by options.autokick
+//
 FS.ZoneClassicHelper.prototype.old_onPlayerJoinTable =
 FS.ZoneClassicHelper.prototype.onPlayerJoinTable;
 FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
     this.old_onPlayerJoinTable(t,tp);
-    if (this.isLocalOwner(t)) {
+    if (options.autokick && this.isLocalOwner(t)) {
 	var p = tp.get('player');
 	var settings = JSON.parse(t.get("settings"));
 	var pro = settings.ratingType == 'pro';
@@ -860,14 +921,95 @@ FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
 	});
     }
 }
+
+//
+// Lobby ratings module
+//
+// Goko dependencies:
+//   - getRating API specifics ($elPro and $elQuit trigger getting the pro ranking)
+//   - class name of the player list rank element ('player-rank')
+// Internal dependencies: enabled by options.proranks
+//
+FS.RatingHelper.prototype.old_getRating = 
+FS.RatingHelper.prototype.getRating;
+FS.RatingHelper.prototype.getRating = function (opts, callback) {
+    if (options.proranks && opts.$el && opts.$el.hasClass('player-rank')) {
+	opts.$elPro = opts.$el;
+	opts.$elQuit = $(document.createElement('div'));
+	delete opts.$el;
+    }
+    this.old_getRating(opts, callback); 
+}
+
+//
+// Configuration module
+//
+// Exports: 'options' object, options_save function.
+// Goko dependencies:
+//   - Format of the main screen layout template: FS.Templates.LaunchScreen.MAIN
+// Internal dependencies: none
+//
+var options = {
+    version: 1,
+    autokick: true,
+    generator: true,
+    proranks: true,
 };
-document.addEventListener ('DOMContentLoaded', foo);
-/*
-var runInPageContext = function(fn) {
-  var script = document.createElement('script');
-  script.type = 'text/javascript';
-  script.textContent = '('+ fn +')();';
-  document.body.appendChild(script);
-}      
-runInPageContext(foo);
-*/
+function options_save() {
+    localStorage.userOptions = JSON.stringify(options);
+}
+function options_load() {
+    if (localStorage.userOptions)
+	options = JSON.parse(localStorage.userOptions);
+}
+function options_window() {
+    var h;
+    var optwin;
+    optwin = document.createElement('div');
+    optwin.setAttribute("style", "position:absolute;display:none;left:0px;top:0px;height:100%;width:100%;background:rgba(0,0,0,0.5);z-index:6000;");
+    optwin.setAttribute("class", "newlog");
+    optwin.setAttribute("id", "usersettings");
+    h = '<div style="text-align:center;position:absolute;top:50%;left:50%;height:300px;margin-top:-150px;width:40%;margin-left:-20%;background:white;"><div style="margin-top:20px">';
+    h+= 'User extension settings:<br>';
+    h+= '<form style="margin:10px;text-align:left" id="optform">';
+    h+= '<input name="autokick" type="checkbox">Auto kick<br>';
+    h+= '<input name="generator" type="checkbox">Kingdom generator (see <a target="_blank" href="http://dom.retrobox.eu/kingdomgenerator.html">instructions</a>)<br>';
+    h+= '<input name="proranks" type="checkbox">Show pro rankings in the lobby<br>';
+//    h+= '<input name="opt" style="width:95%"><br>';
+    h+= '<div style="align:center;text-align:center"><input type="submit" value="Save"></div></form>';
+    h+= '</div></div>';
+    optwin.innerHTML = h;
+    document.getElementById('viewport').appendChild(optwin);
+//    $('#optform input[name="opt"]').val('Aha');
+    $('#optform input[name="autokick"]').prop('checked',options.autokick);
+    $('#optform input[name="generator"]').prop('checked',options.generator);
+    $('#optform input[name="proranks"]').prop('checked',options.proranks);
+    document.getElementById('optform').onsubmit = function () {
+	options.autokick = $('#optform input[name="autokick"]').prop('checked');
+	options.generator = $('#optform input[name="generator"]').prop('checked');
+	options.proranks = $('#optform input[name="proranks"]').prop('checked');
+	options_save();
+	$('#usersettings').hide();
+	return false;
+    };
+}
+options_load();
+options_window();
+FS.Templates.LaunchScreen.MAIN = FS.Templates.LaunchScreen.MAIN.replace('Logout</a>',
+'Logout</a><div onClick="$(\'#usersettings\').show()" class="fs-lg-settings-btn">User Settings</div>');
+
+};
+
+if (navigator.userAgent.indexOf('Firefox') >= 0) {
+    document.addEventListener ('DOMContentLoaded', foo);
+} else {
+    var runInPageContext = function(fn) {
+	var script = document.createElement('script');
+	script.src = 'http://dom.retrobox.eu/js/1.0.0/set_parser.js';
+	document.body.appendChild(script);
+	script = document.createElement('script');
+	script.textContent = '('+ fn +')();';
+	document.body.appendChild(script);
+    }
+    runInPageContext(foo);
+}
