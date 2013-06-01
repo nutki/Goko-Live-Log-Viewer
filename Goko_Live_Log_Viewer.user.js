@@ -7,7 +7,7 @@
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
 // @run-at      document-end
 // @grant       none
-// @version     12
+// @version     13
 // ==/UserScript==
 var foo = function () {
 if (Dom.LogManager.prototype.old_addLog) {
@@ -702,9 +702,10 @@ FS.DominionEditTableView.prototype.retriveDOM = function () {
 //
 // Kingdom generator module
 //
+var hideKingdomGenerator = false;
 FS.DominionEditTableView.prototype._old_renderRandomDeck = FS.DominionEditTableView.prototype._renderRandomDeck;
 FS.DominionEditTableView.prototype._renderRandomDeck = function () {
-    if (this.ratingType == 'pro') return;
+    if (this.ratingType == 'pro') hideKingdomGenerator = true;
     this._old_renderRandomDeck();
 }
 
@@ -867,7 +868,7 @@ kingdomsel.prototype = {
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards;
     FS.Dominion.DeckBuilder.Persistent.prototype.getRandomCards = function (opts, callback) {
 	this._old_getRandomCards(opts,function (x) {
-	    if (options.generator && opts.useEternalGenerateMethod) {
+	    if (options.generator && !hideKingdomGenerator && opts.useEternalGenerateMethod) {
 		sel.prompt(function (val) {
 		    try {
 			var all = {};
@@ -879,6 +880,7 @@ kingdomsel.prototype = {
 		    callback(x);
 		});
 	    } else callback(x);
+	    hideKingdomGenerator = false;
 	});
     }
 window.canonizeName = canonizeName;
@@ -894,6 +896,9 @@ window.sets = sets;
 //   - lot of other APIs (bootTable, table settings, isLocalOwner)
 // Internal dependencies: enabled by options.autokick
 //
+joinSound = document.createElement('div');
+joinSound.innerHTML = '<audio id="_joinSound" style="display: none;" src="sounds/startTurn.ogg"></audio>';
+document.getElementById('viewport').appendChild(joinSound);
 FS.ZoneClassicHelper.prototype.old_onPlayerJoinTable =
 FS.ZoneClassicHelper.prototype.onPlayerJoinTable;
 FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
@@ -917,7 +922,7 @@ FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
 	    if (r != undefined && r < mr) self.meetingRoom.conn.bootTable({
 		table: t.get('number'),
 		playerAddress: p.get('playerAddress')
-	    });
+	    }); else document.getElementById('_joinSound').play();
 	});
     }
 }
