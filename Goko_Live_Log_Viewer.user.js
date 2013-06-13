@@ -7,7 +7,7 @@
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
 // @run-at      document-end
 // @grant       none
-// @version     14
+// @version     15
 // ==/UserScript==
 var foo = function () {
 if (Dom.LogManager.prototype.old_addLog) {
@@ -454,6 +454,19 @@ var types = {
 'Tunnel':'victory-reaction',
 'victory point chips':'vp-chip',
 'Curse':'curse',
+'Candlestick Maker':'action',
+'Stonemason':'action',
+'Doctor':'action',
+'Masterpiece':'treasure',
+'Advisor':'action',
+'Herald':'action',
+'Plaza':'action',
+'Taxman':'action-attack',
+'Baker':'action',
+'Butcher':'action',
+'Journeyman':'action',
+'Merchant Guild':'action',
+'Soothsayer':'action-attack',
 }
 
 var fixnames = { 'JackOfAllTrades':'Jack of All Trades' };
@@ -775,6 +788,10 @@ altar:"D6",huntinggrounds:"D6",
 blackmarket:"X3",
 envoy:"X4",walledvillage:"X4",
 governor:"X5",stash:"X5",
+candlestickmaker:"G2",stonemason:"G2",
+doctor:"G3",masterpiece:"G3",
+advisor:"G4",herald:"G4",plaza:"G4",taxman:"G4",
+baker:"G5",butcher:"G5",journeyman:"G5",merchantguild:"G5",soothsayer:"G5",
 };
 var setNames = {
     '1':'cost1',
@@ -795,6 +812,7 @@ var setNames = {
     'H':'hinterlands',
     'D':'darkages',
     'X':'promos',
+    'G':'guilds',
 };
 var sets = {};
 
@@ -1016,9 +1034,10 @@ function insertInPlace(element) {
 }
 
 function getSortablePlayerObjectFromElement(element) {
+    var rankSpan = element.querySelector('.player-rank>span');
     return {
         name: element.querySelector('.fs-mtrm-player-name>strong').innerHTML,
-        rating: parseInt(element.querySelector('.player-rank>span').innerHTML,10)
+        rating: rankSpan ? parseInt(rankSpan.innerHTML,10) : -1
     };
 }
 
