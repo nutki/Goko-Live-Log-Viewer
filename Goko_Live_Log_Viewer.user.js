@@ -7,7 +7,7 @@
 // @require     http://dom.retrobox.eu/js/1.0.0/set_parser.js
 // @run-at      document-end
 // @grant       none
-// @version     13
+// @version     14
 // ==/UserScript==
 var foo = function () {
 if (Dom.LogManager.prototype.old_addLog) {
@@ -46,6 +46,7 @@ Dom.LogManager.prototype.addLog = function (opt) {
 	    if (j) {
 		possessed = j[3] != undefined; 
 		newLogMode = newLogNames[j[1]];
+		if (parseInt(j[2]) > 4) vpLocked = true; // Stop VP tracker settings after turn 4
 		newLogText += '<h1 class="p'+newLogMode+'">'+h[1]+'</h1>';
 	    } else {
 		if (h[1] == 'Game Setup') {
@@ -546,7 +547,7 @@ function decodeCard(name) {
     return undefined;
 }
 var vpOn = false;
-var vpOff = false;
+var vpLocked = false;
 function vp_div() {
     if (!vpOn) return '';
     var ret = '<div style="position:absolute;padding:2px;background-color:gray"><table>';
@@ -563,6 +564,13 @@ function vp_div() {
     }
     ret += '</table></div>';
     return ret;
+}
+function vp_txt() {
+    var ret = [];
+    var p = Object.keys(newLogNames);
+    for (var i = 0; i < p.length; i++)
+	ret.push(p[i] + ': '+ playervp[newLogNames[p[i]]]);
+    return ret.sort().join(', ');
 }
 Dom.DominionWindow.prototype._old_moveCards = Dom.DominionWindow.prototype._moveCards;
 Dom.DominionWindow.prototype._moveCards = function(options, callback) {
@@ -585,30 +593,41 @@ DominionClient.prototype.onIncomingMessage = function(messageName, messageData, 
 //    if (messageName != 'messageGroup' && messageName != 'gamePingMessage')
 //	console.log(messageName + JSON.stringify(messageData));
     if (messageName == 'RoomChat') {
-	if (messageData.text.toUpperCase() == '#VPOFF') {
-	    vpOff = true;
-	    vpOn = false;
-	    this.clientConnection.send('sendChat',{text:'Victory Point tracker disallowed'});
-	} else if (messageData.text.toUpperCase() == '#VPON') {
-	    if (vpOff) {
-		this.clientConnection.send('sendChat',{text:'Victory Point tracker previously disallowed'});
+	if (messageData.text.toUpperCase() == '#VPOFF' && (vpOn || !vpLocked)) {
+	    if (vpLocked) {
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker setting locked'});
 	    } else {
-		this.clientConnection.send('sendChat',{text:'Victory Point tracker enabled (type #vpoff to disallow)'});
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker disallowed'});
+		vpOn = false;
+		vpLocked = true;
+	    }
+	} else if (messageData.text.toUpperCase() == '#VPON' && !vpOn) {
+	    if (vpLocked) {
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker setting locked'});
+	    } else {
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker enabled (see http://dom.retrobox.eu/vp.html)'});
 		vpOn = true;
 	    }
+	} else if (messageData.text.toUpperCase() == '#VP?' && vpOn) {
+	    this.clientConnection.send('sendChat',{text:'Current points: ' + vp_txt()});
 	}
     } else if (messageName == 'addLog' && messageData.text == '------------ Game Setup ------------') {
 	vpOn = false;
-	vpOff = false;
+	vpLocked = false;
 	var tablename = JSON.parse(this.table.get("settings")).name;
 	if (tablename) {
 	    tablename = tablename.toUpperCase();
 	    if (tablename.indexOf("#VPON") != -1) {
-		this.clientConnection.send('sendChat',{text:'#vpon'})
+		this.clientConnection.send('sendChat',{text:'Victory Point tracker enabled (see http://dom.retrobox.eu/vp.html)'});
+		vpOn = true;
+		vpLocked = true;
 	    } else if (tablename.indexOf("#VPOFF") != -1) {
-		this.clientConnection.send('sendChat',{text:'#vpoff'})
+		vpOn = false;
+		vpLocked = true;
 	    }
 	}
+    } else if (messageName == 'addLog' && messageData.text == 'Rating system: adventure' && options.adventurevp) {
+	vpOn = true;
     }
     } catch (e) {
 	console.log('exception :' + e);
@@ -844,7 +863,7 @@ kingdomsel.prototype = {
     prompt: function(callback) {
 	var self = this;
 	this.sel.style.display = 'block';
-	this.selval.focus();
+	this.selval.select();
 	this.selform.onsubmit = function () {
 	    callback(this.selval.value);
 	    self.sel.style.display = 'none';
@@ -931,19 +950,76 @@ FS.ZoneClassicHelper.prototype.onPlayerJoinTable = function (t,tp) {
 // Lobby ratings module
 //
 // Goko dependencies:
-//   - getRating API specifics ($elPro and $elQuit trigger getting the pro ranking)
-//   - class name of the player list rank element ('player-rank')
-// Internal dependencies: enabled by options.proranks
+// - getRating API specifics ($elPro and $elQuit trigger getting the pro ranking)
+// - class name of the player list rank element ('player-rank')
+// - format of the text content of the player list element ('username Rating: 1000')
+// Internal dependencies:
+// - pro rating display enabled by options.proranks
+// - sort by rating enabled by options.sortrating
+// - insertInPlace()
+// - getRatingObject()
 //
-FS.RatingHelper.prototype.old_getRating = 
+
+FS.RatingHelper.prototype.old_getRating =
 FS.RatingHelper.prototype.getRating;
 FS.RatingHelper.prototype.getRating = function (opts, callback) {
-    if (options.proranks && opts.$el && opts.$el.hasClass('player-rank')) {
-	opts.$elPro = opts.$el;
-	opts.$elQuit = $(document.createElement('div'));
-	delete opts.$el;
+    var newCallback = callback;
+    if (opts.$el && opts.$el.hasClass('player-rank')) {
+	if (options.sortrating) {
+	    var playerElement = opts.$el.closest('li')[0];
+	    newCallback = function () {
+		callback();
+		insertInPlace(playerElement);
+	    };
+	}
+	if (options.proranks) {
+	    opts.$elPro = opts.$el;
+	    opts.$elQuit = $(document.createElement('div'));
+	    delete opts.$el;
+	}
     }
-    this.old_getRating(opts, callback); 
+    this.old_getRating(opts, newCallback);
+};
+
+FS.ClassicRoomView.prototype.old_modifyDOM =
+FS.ClassicRoomView.prototype.modifyDOM;
+FS.ClassicRoomView.prototype.modifyDOM = function () {
+    var originalRating = this.meetingRoom.options.ratingSystemId;
+    if (options.proranks)
+        this.meetingRoom.options.ratingSystemId = FS.MeetingRoomSetting.ratingSystemPro;
+    FS.ClassicRoomView.prototype.old_modifyDOM.call(this);
+    this.meetingRoom.options.ratingSystemId = originalRating;
+};
+
+function insertInPlace(element) {
+    var list = element.parentNode;
+    if (!list) return; // Removed from the list before the ranking came
+    list.removeChild(element);
+
+    var newEl = getSortablePlayerObjectFromElement(element),
+        elements = list.children,
+        b = elements.length,
+        a = 0;
+
+    while (a !== b) {
+        var c = Math.floor((a+b)/2);
+        var compare = getSortablePlayerObjectFromElement(elements[c]);
+
+        // sort first by rating, then alphabetically
+        if (compare.rating < newEl.rating || compare.rating === newEl.rating && compare.name > newEl.name) {
+            b = c;
+        } else {
+            a = c + 1;
+        }
+    }
+    list.insertBefore(element,elements[a] || null);
+}
+
+function getSortablePlayerObjectFromElement(element) {
+    return {
+        name: element.querySelector('.fs-mtrm-player-name>strong').innerHTML,
+        rating: parseInt(element.querySelector('.player-rank>span').innerHTML,10)
+    };
 }
 
 //
@@ -954,18 +1030,23 @@ FS.RatingHelper.prototype.getRating = function (opts, callback) {
 //   - Format of the main screen layout template: FS.Templates.LaunchScreen.MAIN
 // Internal dependencies: none
 //
-var options = {
+var default_options = {
     version: 1,
     autokick: true,
     generator: true,
     proranks: true,
+    sortrating: true,
+    adventurevp: true,
 };
+var options = {};
 function options_save() {
     localStorage.userOptions = JSON.stringify(options);
 }
 function options_load() {
     if (localStorage.userOptions)
 	options = JSON.parse(localStorage.userOptions);
+    for (var o in default_options)
+	if (!(o in options)) options[o] = default_options[o];
 }
 function options_window() {
     var h;
@@ -980,6 +1061,8 @@ function options_window() {
     h+= '<input name="autokick" type="checkbox">Auto kick<br>';
     h+= '<input name="generator" type="checkbox">Kingdom generator (see <a target="_blank" href="http://dom.retrobox.eu/kingdomgenerator.html">instructions</a>)<br>';
     h+= '<input name="proranks" type="checkbox">Show pro rankings in the lobby<br>';
+    h+= '<input name="sort-rating" type="checkbox">Sort players by rating<br>';
+    h+= '<input name="adventurevp" type="checkbox">Victory point tracker in Adventures<br>';
 //    h+= '<input name="opt" style="width:95%"><br>';
     h+= '<div style="align:center;text-align:center"><input type="submit" value="Save"></div></form>';
     h+= '</div></div>';
@@ -989,10 +1072,14 @@ function options_window() {
     $('#optform input[name="autokick"]').prop('checked',options.autokick);
     $('#optform input[name="generator"]').prop('checked',options.generator);
     $('#optform input[name="proranks"]').prop('checked',options.proranks);
+    $('#optform input[name="sort-rating"]').prop('checked',options.sortrating);
+    $('#optform input[name="adventurevp"]').prop('checked',options.adventurevp);
     document.getElementById('optform').onsubmit = function () {
 	options.autokick = $('#optform input[name="autokick"]').prop('checked');
 	options.generator = $('#optform input[name="generator"]').prop('checked');
 	options.proranks = $('#optform input[name="proranks"]').prop('checked');
+	options.sortrating = $('#optform input[name="sort-rating"]').prop('checked'); 
+	options.adventurevp = $('#optform input[name="adventurevp"]').prop('checked'); 
 	options_save();
 	$('#usersettings').hide();
 	return false;
